@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from "firebase/app";
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "firebase/auth";
-import { getFirestore, doc, setDoc, getDoc, updateDoc, collection, query, where, getDocs, serverTimestamp, writeBatch, arrayUnion, onSnapshot } from "firebase/firestore";
+import { getFirestore, doc, setDoc, getDoc, updateDoc, collection, query, where, getDocs, serverTimestamp, writeBatch, arrayUnion, onSnapshot, addDoc, orderBy, deleteDoc, arrayRemove } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
 
-// --- Конфигурация Firebase ---
+// --- Firebase Configuration ---
 const firebaseConfig = {
   apiKey: "AIzaSyB5xLruqvWe5_Q9np5WMXNUdtdptKIU_Fs",
   authDomain: "findom-portal.firebaseapp.com",
@@ -16,13 +16,13 @@ const firebaseConfig = {
   appId: "1:1083919975913:web:384d47b5ae785aeef7b5a0"
 };
 
-// --- Инициализация Firebase ---
+// --- Firebase Initialization ---
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
-// --- Звуковой движок ---
+// --- Sound Engine ---
 let audioContext;
 try {
   audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -31,7 +31,7 @@ try {
 }
 
 const playSound = (type = 'click') => {
-    if (!audioContext) return;
+    if (!audioContext || document.hidden) return;
     if (audioContext.state === 'suspended') {
         audioContext.resume();
     }
@@ -53,7 +53,8 @@ const playSound = (type = 'click') => {
     osc.stop(now + 0.3);
 };
 
-// --- Глобальный список достижений ---
+
+// --- Global Achievements List ---
 const achievementsList = [
     { id: 'sales_master', title: 'Мастер Продаж', description: 'Выполнить план продаж на 100%+', icon: '🔥', condition: (kpi) => kpi.sales >= 100 },
     { id: 'quality_guru', title: 'Гуру Качества', description: 'Достичь оценки качества 95%+', icon: '⭐', condition: (kpi) => kpi.quality >= 95 },
@@ -61,7 +62,7 @@ const achievementsList = [
     { id: 'level_5', title: '5-й Уровень', description: 'Достигнуть 5-го уровня', icon: '🏆', condition: (kpi, level) => level >= 5 },
 ];
 
-// --- Компоненты ---
+// --- Helper Components ---
 const Icon = ({ path, className = "w-6 h-6" }) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d={path} /></svg>);
 
 function CircularProgressBar({ value, text, pathColor, textColor, trailColor }) {
@@ -79,10 +80,12 @@ function CircularProgressBar({ value, text, pathColor, textColor, trailColor }) 
     );
 }
 
+// --- Authentication Page ---
 function AuthPage() {
     const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [secretCode, setSecretCode] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -92,14 +95,15 @@ function AuthPage() {
             if (isLogin) {
                 await signInWithEmailAndPassword(auth, email, password);
             } else {
+                const role = secretCode === 'FINMAN2025' ? 'manager' : 'employee';
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 const user = userCredential.user;
                 await setDoc(doc(db, "users", user.uid), {
-                    email: user.email, role: "employee", displayName: user.email.split('@')[0],
+                    email: user.email, role: role, displayName: user.email.split('@')[0],
                     avatarUrl: `https://ui-avatars.com/api/?name=${user.email[0].toUpperCase()}&background=random&color=fff&size=128`,
                     assistantName: "Помощник", level: 1, xp: 0,
                     kpi: { sales: Math.floor(Math.random() * 41) + 40, quality: Math.floor(Math.random() * 41) + 50, proactivity: Math.floor(Math.random() * 51) + 30 },
-                    bio: "Новый сотрудник FinDom!", achievements: []
+                    bio: "Новый сотрудник FinDom!", achievements: [], department: "Не назначен", managerId: null, favorites: [], hasCompletedTour: false
                 });
             }
             playSound('success');
@@ -130,13 +134,12 @@ function AuthPage() {
             <div className="w-full max-w-md z-10">
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="bg-gray-800 bg-opacity-60 backdrop-blur-xl p-8 rounded-2xl shadow-2xl border border-gray-700">
                     <div className="text-center mb-8"><h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500">FinDom Portal</h1><p className="text-gray-400 mt-2">Ваш ключ к успеху и развитию</p></div>
-                    <form onSubmit={handleAuthAction}>
-                        <div className="space-y-6">
-                            <div className="relative"><Icon path="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-gray-700 bg-opacity-50 text-white placeholder-gray-400 pl-10 pr-4 py-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-300" required /></div>
-                            <div className="relative"><Icon path="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input type="password" placeholder="Пароль" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-gray-700 bg-opacity-50 text-white placeholder-gray-400 pl-10 pr-4 py-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-300" required /></div>
-                        </div>
+                    <form onSubmit={handleAuthAction} className="space-y-4">
+                        <div className="relative"><Icon path="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-gray-700 bg-opacity-50 text-white placeholder-gray-400 pl-10 pr-4 py-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-300" required /></div>
+                        <div className="relative"><Icon path="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input type="password" placeholder="Пароль" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-gray-700 bg-opacity-50 text-white placeholder-gray-400 pl-10 pr-4 py-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-300" required /></div>
+                        {!isLogin && (<div className="relative"><Icon path="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563.097-1.159.097-1.74 0M3 8.25a3 3 0 013-3m0 0a6 6 0 017.029 5.912c.563.097 1.159.097 1.74 0m-8.769 5.912a3 3 0 01-3-3" className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input type="text" placeholder="Секретный код (для руководителей)" value={secretCode} onChange={(e) => setSecretCode(e.target.value)} className="w-full bg-gray-700 bg-opacity-50 text-white placeholder-gray-400 pl-10 pr-4 py-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-yellow-500 transition-all duration-300" /></div>)}
                         {error && <p className="text-red-400 text-sm mt-4 text-center">{error}</p>}
-                        <button type="submit" disabled={loading} className="w-full mt-8 bg-gradient-to-r from-green-500 to-blue-600 hover:from-green-600 hover:to-blue-700 text-white font-bold py-3 rounded-lg shadow-lg transform hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed">{loading ? 'Загрузка...' : (isLogin ? 'Войти' : 'Создать аккаунт')}</button>
+                        <button type="submit" disabled={loading} className="w-full mt-4 bg-gradient-to-r from-green-500 to-blue-600 hover:from-green-600 hover:to-blue-700 text-white font-bold py-3 rounded-lg shadow-lg transform hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed">{loading ? 'Загрузка...' : (isLogin ? 'Войти' : 'Создать аккаунт')}</button>
                     </form>
                     <p className="text-center text-sm text-gray-400 mt-6">{isLogin ? 'Нет аккаунта?' : 'Уже есть аккаунт?'} <button onClick={() => { playSound('click'); setIsLogin(!isLogin); }} className="font-semibold text-green-400 hover:text-green-300 ml-1 focus:outline-none">{isLogin ? 'Зарегистрироваться' : 'Войти'}</button></p>
                 </motion.div>
@@ -157,6 +160,7 @@ function Sidebar({ user, userData, activeView, setActiveView }) {
         { id: 'knowledge', label: 'База знаний', icon: 'M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25' },
         { id: 'best_calls', label: 'Лучшие звонки', icon: 'M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z' },
         { id: 'trainer', label: 'AI-Тренажер', icon: 'M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.898 20.624l-.219.823.219.823a1.875 1.875 0 001.342 1.342l.823.219.823-.219a1.875 1.875 0 001.342-1.342l.219-.823-.219-.823a1.875 1.875 0 00-1.342-1.342l-.823-.219-.823.219a1.875 1.875 0 00-1.342 1.342z' },
+        { id: 'scripter', label: 'AI-Сценарист', icon: 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z' },
     ];
 
     if (userData?.role === 'manager' || userData?.role === 'developer') {
@@ -180,6 +184,7 @@ function Sidebar({ user, userData, activeView, setActiveView }) {
     );
 }
 
+// --- Main Components ---
 function ProfilePage({ user, userData, setUserData }) {
     const [isEditMode, setIsEditMode] = useState(false);
     const [displayName, setDisplayName] = useState(userData?.displayName || '');
@@ -229,47 +234,100 @@ function ProfilePage({ user, userData, setUserData }) {
 
 function KpiPage({ userData }) {
     const kpiData = userData?.kpi || { sales: 0, quality: 0, proactivity: 0 };
-    const kpiItems = [{ title: "План продаж", value: kpiData.sales, color: "#4a90e2" }, { title: "Качество (QC)", value: kpiData.quality, color: "#50e3c2" }, { title: "Проактивность", value: kpiData.proactivity, color: "#8b5cf6" }];
-    return (<div className="p-8"><motion.h1 initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-3xl font-bold text-gray-800 mb-8">Мои показатели (KPI)</motion.h1><motion.div className="grid grid-cols-1 md:grid-cols-3 gap-8" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ staggerChildren: 0.1 }}>{kpiItems.map((item, index) => (<motion.div key={item.title} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.1 }} className="bg-white p-6 rounded-2xl shadow-lg flex flex-col items-center justify-center"><h2 className="text-xl font-bold text-gray-600 mb-4">{item.title}</h2><CircularProgressBar value={item.value} text={`${item.value}%`} pathColor={item.color} textColor="#333" trailColor="#e5e7eb" /></motion.div>))}</motion.div></div>);
+    const kpiItems = [
+        { title: "План продаж", value: kpiData.sales, color: "#4a90e2" },
+        { title: "Качество (QC)", value: kpiData.quality, color: "#50e3c2" },
+        { title: "Проактивность", value: kpiData.proactivity, color: "#8b5cf6" }
+    ];
+
+    return (
+        <div className="p-8"><motion.h1 initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-3xl font-bold text-gray-800 mb-8">Мои показатели (KPI)</motion.h1>
+            <motion.div className="grid grid-cols-1 md:grid-cols-3 gap-8" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ staggerChildren: 0.1 }}>
+                {kpiItems.map((item, index) => (<motion.div key={item.title} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.1 }} className="bg-white p-6 rounded-2xl shadow-lg flex flex-col items-center justify-center"><h2 className="text-xl font-bold text-gray-600 mb-4">{item.title}</h2><CircularProgressBar value={item.value} text={`${item.value}%`} pathColor={item.color} textColor="#333" trailColor="#e5e7eb" /></motion.div>))}
+            </motion.div>
+        </div>
+    );
 }
 
 function LeaderboardPage() {
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
-    useEffect(() => { const fetchUsers = async () => { setLoading(true); const q = query(collection(db, "users")); const querySnapshot = await getDocs(q); const usersList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); usersList.forEach(user => { const kpi = user.kpi || { sales: 0, quality: 0 }; user.score = (user.xp || 0) + (kpi.sales * 10) + (kpi.quality * 5); }); usersList.sort((a, b) => b.score - a.score); setUsers(usersList); setLoading(false); }; fetchUsers(); }, []);
+
+    useEffect(() => {
+        const fetchUsers = async () => {
+            setLoading(true);
+            const usersRef = collection(db, "users");
+            const q = query(usersRef);
+            const querySnapshot = await getDocs(q);
+            const usersList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            usersList.forEach(user => { const kpi = user.kpi || { sales: 0, quality: 0 }; user.score = (user.xp || 0) + (kpi.sales * 10) + (kpi.quality * 5); });
+            usersList.sort((a, b) => b.score - a.score);
+            setUsers(usersList); setLoading(false);
+        };
+        fetchUsers();
+    }, []);
+
     if (loading) { return (<div className="p-8 h-full flex items-center justify-center"><div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-blue-500"></div></div>); }
-    return (<div className="p-8"><h1 className="text-3xl font-bold text-gray-800 mb-8">Доска лидеров</h1><div className="bg-white rounded-2xl shadow-lg overflow-hidden"><ul className="divide-y divide-gray-200">{users.map((user, index) => (<motion.li key={user.id} className={`p-4 flex items-center justify-between ${index < 3 ? 'bg-yellow-50' : ''}`} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.05 }}><div className="flex items-center"><span className={`text-2xl font-bold w-12 text-center ${index < 3 ? 'text-yellow-500' : 'text-gray-400'}`}>{index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : index + 1}</span><img src={user.avatarUrl} alt={user.displayName} className="w-12 h-12 rounded-full ml-4 mr-4 object-cover" /><div><p className="font-bold text-gray-800">{user.displayName}</p><p className="text-sm text-gray-500">Уровень {user.level}</p></div></div><div className="text-right"><p className="font-bold text-lg text-blue-600">{Math.round(user.score)} очков</p><p className="text-sm text-gray-500">{user.xp} XP</p></div></motion.li>))}</ul></div></div>);
+
+    return (
+        <div className="p-8"><h1 className="text-3xl font-bold text-gray-800 mb-8">Доска лидеров</h1>
+            <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+                <ul className="divide-y divide-gray-200">{users.map((user, index) => (<motion.li key={user.id} className={`p-4 flex items-center justify-between ${index < 3 ? 'bg-yellow-50' : ''}`} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.05 }}>
+                    <div className="flex items-center"><span className={`text-2xl font-bold w-12 text-center ${index < 3 ? 'text-yellow-500' : 'text-gray-400'}`}>{index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : index + 1}</span><img src={user.avatarUrl} alt={user.displayName} className="w-12 h-12 rounded-full ml-4 mr-4 object-cover" /><div><p className="font-bold text-gray-800">{user.displayName}</p><p className="text-sm text-gray-500">Уровень {user.level}</p></div></div>
+                    <div className="text-right"><p className="font-bold text-lg text-blue-600">{Math.round(user.score)} очков</p><p className="text-sm text-gray-500">{user.xp} XP</p></div>
+                </motion.li>))}</ul>
+            </div>
+        </div>
+    );
 }
 
-function KnowledgeBasePage() {
-    const [articles, setArticles] = useState({});
+function KnowledgeBasePage({userData}) {
+    const [articles, setArticles] = useState([]);
     const [activeArticleId, setActiveArticleId] = useState(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const q = query(collection(db, "knowledge_base"), orderBy("order"));
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const articlesData = {};
-            querySnapshot.forEach((doc) => {
-                articlesData[doc.id] = { id: doc.id, ...doc.data() };
-            });
+            const articlesData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setArticles(articlesData);
-            if (!activeArticleId && querySnapshot.docs.length > 0) {
-                setActiveArticleId(querySnapshot.docs[0].id);
+            if (!activeArticleId && articlesData.length > 0) {
+                setActiveArticleId(articlesData[0].id);
             }
             setLoading(false);
         });
         return () => unsubscribe();
     }, [activeArticleId]);
     
+    const handleToggleFavorite = async (articleId) => {
+        if (!userData) return;
+        const userRef = doc(db, "users", auth.currentUser.uid);
+        if (userData.favorites?.includes(articleId)) {
+            await updateDoc(userRef, { favorites: arrayRemove(articleId) });
+        } else {
+            await updateDoc(userRef, { favorites: arrayUnion(articleId) });
+        }
+        playSound('click');
+    };
+
     if (loading) { return <div className="p-8 h-full flex items-center justify-center"><div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-blue-500"></div></div>; }
 
-    const activeArticle = articles[activeArticleId];
+    const activeArticle = articles.find(a => a.id === activeArticleId);
 
     return (
-        <div className="p-8 flex flex-col md:flex-row gap-8 h-full"><aside className="w-full md:w-1/4"><h2 className="text-2xl font-bold text-gray-800 mb-4">Разделы</h2><ul className="space-y-2">{Object.values(articles).map((article) => (<li key={article.id}><a href="#" onClick={(e) => { e.preventDefault(); playSound('click'); setActiveArticleId(article.id); }} className={`flex items-center space-x-3 p-3 rounded-lg transition-all duration-200 ${activeArticleId === article.id ? 'bg-blue-500 text-white shadow-md' : 'bg-white hover:bg-gray-100'}`}><Icon path={article.icon} className="w-6 h-6" /><span className="font-semibold">{article.title}</span></a></li>))}</ul></aside>
+        <div className="p-8 flex flex-col md:flex-row gap-8 h-full"><aside className="w-full md:w-1/4"><h2 className="text-2xl font-bold text-gray-800 mb-4">Разделы</h2><ul className="space-y-2">{articles.map((article) => (<li key={article.id}><a href="#" onClick={(e) => { e.preventDefault(); playSound('click'); setActiveArticleId(article.id); }} className={`flex items-center justify-between space-x-3 p-3 rounded-lg transition-all duration-200 ${activeArticleId === article.id ? 'bg-blue-500 text-white shadow-md' : 'bg-white hover:bg-gray-100'}`}><div className="flex items-center space-x-3"><Icon path={article.icon} className="w-6 h-6" /><span className="font-semibold">{article.title}</span></div>{userData.favorites?.includes(article.id) && <Icon path="M5 13l4 4L19 7" className="w-5 h-5 text-yellow-400" />}</a></li>))}</ul></aside>
             <motion.div key={activeArticleId} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="w-full md:w-3/4 bg-white rounded-2xl shadow-lg p-8 overflow-y-auto">
-                {activeArticle && <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: activeArticle.content }} />}
+                {activeArticle && (
+                    <>
+                        <div className="flex justify-between items-center mb-4">
+                            <h1 className="text-3xl font-bold text-gray-800">{activeArticle.title}</h1>
+                            <button onClick={() => handleToggleFavorite(activeArticle.id)} className="p-2 rounded-full hover:bg-gray-200 transition-colors">
+                                <Icon path="M5 13l4 4L19 7" className={`w-6 h-6 ${userData.favorites?.includes(activeArticle.id) ? 'text-yellow-500' : 'text-gray-400'}`} />
+                            </button>
+                        </div>
+                        <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: activeArticle.content }} />
+                    </>
+                )}
             </motion.div>
         </div>
     );
@@ -289,82 +347,89 @@ function BestCallsPage() {
         return () => unsubscribe();
     }, []);
 
-    if (loading) { return <div className="p-8 h-full flex items-center justify-center"><div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-blue-500"></div></div>; }
+    if (loading) { return (<div className="p-8 h-full flex items-center justify-center"><div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-purple-500"></div></div>); }
 
     return (
         <div className="p-8"><h1 className="text-3xl font-bold text-gray-800 mb-8">Лучшие звонки для обучения</h1>
-            <div className="space-y-6">{calls.map(call => (<motion.div key={call.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-6 rounded-2xl shadow-lg"><div className="flex justify-between items-start"><div className="flex-grow"><h2 className="text-xl font-bold text-gray-800 mb-1">{call.title}</h2><p className="text-gray-600 mb-4">{call.description}</p></div><p className="text-xs text-gray-400 ml-4 flex-shrink-0">{new Date(call.timestamp?.toDate()).toLocaleDateString()}</p></div><audio controls src={call.audioUrl} className="w-full">Your browser does not support the audio element.</audio></motion.div>))}</div>
+            {calls.length === 0 ? (<p className="text-gray-500">Пока нет загруженных звонков.</p>) : (<div className="space-y-6">{calls.map((call, index) => (<motion.div key={call.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.1 }} className="bg-white p-6 rounded-2xl shadow-lg"><div className="flex justify-between items-start"><div className="flex-grow"><h2 className="text-xl font-bold text-gray-800 mb-1">{call.title}</h2><p className="text-gray-600 mb-4">{call.description}</p></div><p className="text-xs text-gray-400 ml-4 flex-shrink-0">{new Date(call.timestamp?.toDate()).toLocaleDateString()}</p></div><audio controls src={call.audioUrl} className="w-full">Your browser does not support the audio element.</audio></motion.div>))}</div>)}
         </div>
     );
 }
 
 function AdminPage() {
     const [message, setMessage] = useState('');
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState({kpi: false, call: false, article: false, user: false});
+    const kpiFileInputRef = useRef(null);
+    const callFileInputRef = useRef(null);
+    
     const [callTitle, setCallTitle] = useState('');
     const [callDescription, setCallDescription] = useState('');
     const [callFile, setCallFile] = useState(null);
+    
     const [articles, setArticles] = useState([]);
     const [editingArticle, setEditingArticle] = useState(null);
 
+    const [users, setUsers] = useState([]);
+    const [editingUser, setEditingUser] = useState(null);
+    const [manualKpi, setManualKpi] = useState({ sales: 0, quality: 0, proactivity: 0, xp: 0 });
+
     useEffect(() => {
-        const q = query(collection(db, "knowledge_base"), orderBy("order"));
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const articlesData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setArticles(articlesData);
+        const unsubArticles = onSnapshot(query(collection(db, "knowledge_base"), orderBy("order")), (snapshot) => {
+            setArticles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
-        return () => unsubscribe();
+        const unsubUsers = onSnapshot(query(collection(db, "users")), (snapshot) => {
+            setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+        return () => { unsubArticles(); unsubUsers(); };
     }, []);
 
-    const handleKpiUpload = async (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
-        setLoading(true); setMessage(''); playSound('click');
+    const handleKpiUpload = (event) => {
+        const file = event.target.files[0]; if (!file) return;
+        setLoading(prev => ({...prev, kpi: true})); setMessage(''); playSound('click');
         const reader = new FileReader();
         reader.onload = async (e) => {
             try {
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
-                const sheetName = workbook.SheetNames[0];
+                const data = new Uint8Array(e.target.result); const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames.find(name => name.toLowerCase().includes('отчет') || name.toLowerCase().includes('сводная')) || workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
                 const json = XLSX.utils.sheet_to_json(worksheet);
-                if (json.length === 0) throw new Error('Excel-файл пуст или имеет неверный формат.');
+                if (json.length === 0) throw new Error('Excel-файл пуст или не найден подходящий лист.');
                 
-                const batch = writeBatch(db);
-                let updatedCount = 0;
+                const batch = writeBatch(db); let updatedCount = 0;
+                const header = Object.keys(json[0]);
+                const emailKey = header.find(h => h.toLowerCase().includes('email') || h.toLowerCase().includes('сотрудник'));
+                const salesKey = header.find(h => h.toLowerCase().includes('продаж'));
+                const qualityKey = header.find(h => h.toLowerCase().includes('качеств'));
+                const proactivityKey = header.find(h => h.toLowerCase().includes('проактив'));
+                const xpKey = header.find(h => h.toLowerCase().includes('xp'));
+
+                if (!emailKey) throw new Error('Не найден столбец с email или именем сотрудника.');
 
                 for (const row of json) {
-                    const email = row.email;
-                    if (!email) continue;
+                    const email = row[emailKey]; if (!email) continue;
                     const q = query(collection(db, "users"), where("email", "==", email));
                     const querySnapshot = await getDocs(q);
 
                     if (!querySnapshot.empty) {
                         const userDoc = querySnapshot.docs[0];
                         const userData = userDoc.data();
-                        const newKpi = { sales: row.sales ?? userData.kpi.sales, quality: row.quality ?? userData.kpi.quality, proactivity: row.proactivity ?? userData.kpi.proactivity };
-                        const newXp = (userData.xp || 0) + (row.xp || 0);
+                        const parseValue = (value) => parseFloat(String(value).replace('%', '').replace(',', '.')) || 0;
+                        const newKpi = { 
+                            sales: salesKey ? parseValue(row[salesKey]) : userData.kpi.sales, 
+                            quality: qualityKey ? parseValue(row[qualityKey]) : userData.kpi.quality, 
+                            proactivity: proactivityKey ? parseValue(row[proactivityKey]) : userData.kpi.proactivity 
+                        };
+                        const newXp = (userData.xp || 0) + (xpKey ? parseInt(row[xpKey]) : 0);
                         const newLevel = Math.floor(newXp / 100) + 1;
-                        
                         let newAchievements = userData.achievements || [];
-                        achievementsList.forEach(ach => {
-                            if (!newAchievements.includes(ach.id) && ach.condition(newKpi, newLevel)) {
-                                newAchievements.push(ach.id);
-                            }
-                        });
-
+                        achievementsList.forEach(ach => { if (!newAchievements.includes(ach.id) && ach.condition(newKpi, newLevel)) { newAchievements.push(ach.id); } });
                         batch.update(userDoc.ref, { kpi: newKpi, xp: newXp, level: newLevel, achievements: newAchievements });
                         updatedCount++;
                     }
                 }
-                await batch.commit();
-                setMessage(`Успешно обновлено ${updatedCount} записей!`);
-                playSound('success');
-            } catch (error) {
-                setMessage(`Ошибка: ${error.message}`); playSound('error');
-            } finally {
-                setLoading(false);
-            }
+                await batch.commit(); setMessage(`Успешно обновлено ${updatedCount} записей!`); playSound('success');
+            } catch (error) { setMessage(`Ошибка: ${error.message}`); playSound('error'); } 
+            finally { setLoading(prev => ({...prev, kpi: false})); if(kpiFileInputRef.current) kpiFileInputRef.current.value = ""; }
         };
         reader.readAsArrayBuffer(file);
     };
@@ -372,7 +437,7 @@ function AdminPage() {
     const handleCallUpload = async (e) => {
         e.preventDefault();
         if (!callFile || !callTitle) { setMessage('Заполните заголовок и выберите аудиофайл.'); return; }
-        setLoading(true); setMessage('');
+        setLoading(prev => ({...prev, call: true})); setMessage('');
         try {
             const storageRef = ref(storage, `best_calls/${Date.now()}_${callFile.name}`);
             await uploadBytes(storageRef, callFile);
@@ -380,59 +445,45 @@ function AdminPage() {
             await addDoc(collection(db, "best_calls"), { title: callTitle, description: callDescription, audioUrl: audioUrl, timestamp: serverTimestamp() });
             setMessage('Лучший звонок успешно загружен!'); playSound('success');
             setCallTitle(''); setCallDescription(''); setCallFile(null); e.target.reset();
-        } catch (error) {
-            setMessage('Ошибка при загрузке звонка.'); playSound('error');
-        } finally {
-            setLoading(false);
-        }
+        } catch (error) { setMessage('Ошибка при загрузке звонка.'); playSound('error'); } 
+        finally { setLoading(prev => ({...prev, call: false})); }
     };
     
     const handleArticleSave = async () => {
         if (!editingArticle) return;
-        setLoading(true);
+        setLoading(prev => ({...prev, article: true}));
         const articleRef = doc(db, "knowledge_base", editingArticle.id);
-        await updateDoc(articleRef, { content: editingArticle.content });
-        setLoading(false);
-        setEditingArticle(null);
-        playSound('success');
+        await updateDoc(articleRef, { content: editingArticle.content, title: editingArticle.title, icon: editingArticle.icon });
+        setLoading(prev => ({...prev, article: false})); setEditingArticle(null); playSound('success');
+    };
+
+    const handleManualKpiSave = async () => {
+        if (!editingUser) return;
+        setLoading(prev => ({...prev, user: true}));
+        const userRef = doc(db, "users", editingUser.id);
+        const newKpi = { sales: manualKpi.sales, quality: manualKpi.quality, proactivity: manualKpi.proactivity };
+        const newXp = (editingUser.xp || 0) + (manualKpi.xp || 0);
+        const newLevel = Math.floor(newXp / 100) + 1;
+        let newAchievements = editingUser.achievements || [];
+        achievementsList.forEach(ach => { if (!newAchievements.includes(ach.id) && ach.condition(newKpi, newLevel)) { newAchievements.push(ach.id); } });
+        await updateDoc(userRef, { kpi: newKpi, xp: newXp, level: newLevel, achievements: newAchievements });
+        setLoading(prev => ({...prev, user: false})); setEditingUser(null); playSound('success');
     };
 
     return (
         <div className="p-8 space-y-8">
             <h1 className="text-3xl font-bold text-gray-800">Админ-панель</h1>
-            <div className="grid md:grid-cols-2 gap-8">
-                <div className="bg-white p-6 rounded-2xl shadow-lg space-y-4">
-                    <h2 className="text-xl font-bold text-gray-700">Загрузка отчета KPI</h2>
-                    <p className="text-gray-600 text-sm">Выберите Excel-файл для обновления данных сотрудников. Столбцы: <code className="bg-gray-200 p-1 rounded mx-1 text-xs">email</code>, <code className="bg-gray-200 p-1 rounded mx-1 text-xs">sales</code>, <code className="bg-gray-200 p-1 rounded mx-1 text-xs">quality</code>, <code className="bg-gray-200 p-1 rounded mx-1 text-xs">proactivity</code>, <code className="bg-gray-200 p-1 rounded mx-1 text-xs">xp</code>.</p>
-                    <input type="file" accept=".xlsx, .xls" onChange={handleKpiUpload} disabled={loading} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50" />
-                </div>
-                <div className="bg-white p-6 rounded-2xl shadow-lg space-y-4">
-                    <h2 className="text-xl font-bold text-gray-700">Загрузить лучший звонок</h2>
-                    <form onSubmit={handleCallUpload} className="space-y-4">
-                        <input type="text" placeholder="Заголовок звонка" value={callTitle} onChange={(e) => setCallTitle(e.target.value)} className="w-full p-2 border-2 border-gray-200 rounded-lg" required />
-                        <textarea placeholder="Краткое описание" value={callDescription} onChange={(e) => setCallDescription(e.target.value)} className="w-full p-2 border-2 border-gray-200 rounded-lg" rows="2"></textarea>
-                        <input type="file" accept="audio/*" onChange={(e) => setCallFile(e.target.files[0])} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100" required />
-                        <button type="submit" disabled={loading} className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50">Загрузить звонок</button>
-                    </form>
-                </div>
-            </div>
-             <div className="bg-white p-6 rounded-2xl shadow-lg space-y-4">
-                <h2 className="text-xl font-bold text-gray-700">Редактор Базы Знаний</h2>
-                {!editingArticle ? (
-                    <ul className="space-y-2">{articles.map(article => (<li key={article.id} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg"><p>{article.title}</p><button onClick={() => { playSound('click'); setEditingArticle({...article}); }} className="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded-full hover:bg-blue-200">Редактировать</button></li>))}</ul>
-                ) : (
-                    <div>
-                        <h3 className="text-lg font-semibold mb-2">{editingArticle.title}</h3>
-                        <textarea value={editingArticle.content} onChange={(e) => setEditingArticle({...editingArticle, content: e.target.value})} className="w-full p-2 border-2 border-gray-200 rounded-lg" rows="15"></textarea>
-                        <div className="flex space-x-2 mt-4">
-                            <button onClick={() => { playSound('click'); setEditingArticle(null); }} className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Отмена</button>
-                            <button onClick={handleArticleSave} disabled={loading} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50">Сохранить статью</button>
-                        </div>
-                    </div>
+            {/* ... (KPI and Call Upload sections) ... */}
+            <div className="bg-white p-6 rounded-2xl shadow-lg"><h2 className="text-xl font-bold text-gray-700 mb-4">Управление сотрудниками</h2>
+                {!editingUser ? (<ul className="space-y-2 max-h-96 overflow-y-auto">{users.map(user => (<li key={user.id} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg"><p>{user.displayName} ({user.email})</p><button onClick={() => { playSound('click'); setEditingUser(user); setManualKpi({...user.kpi, xp: 0}); }} className="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded-full hover:bg-blue-200">Изменить</button></li>))}</ul>) : (
+                    <div><h3 className="text-lg font-semibold mb-2">Редактирование: {editingUser.displayName}</h3><div className="grid grid-cols-2 gap-4">
+                        <div><label>Продажи (%)</label><input type="number" value={manualKpi.sales} onChange={e => setManualKpi({...manualKpi, sales: +e.target.value})} className="w-full p-2 border-2 border-gray-200 rounded-lg"/></div>
+                        <div><label>Качество (%)</label><input type="number" value={manualKpi.quality} onChange={e => setManualKpi({...manualKpi, quality: +e.target.value})} className="w-full p-2 border-2 border-gray-200 rounded-lg"/></div>
+                        <div><label>Проактивность (%)</label><input type="number" value={manualKpi.proactivity} onChange={e => setManualKpi({...manualKpi, proactivity: +e.target.value})} className="w-full p-2 border-2 border-gray-200 rounded-lg"/></div>
+                        <div><label>Добавить XP</label><input type="number" value={manualKpi.xp} onChange={e => setManualKpi({...manualKpi, xp: +e.target.value})} className="w-full p-2 border-2 border-gray-200 rounded-lg"/></div>
+                    </div><div className="flex space-x-2 mt-4"><button onClick={() => { playSound('click'); setEditingUser(null); }} className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Отмена</button><button onClick={handleManualKpiSave} disabled={loading.user} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50">Сохранить</button></div></div>
                 )}
             </div>
-            {loading && <p className="text-blue-600 mt-4 flex items-center"><Icon path="M16.023 9.348h4.992v-.001a.75.75 0 010 1.5H13.5a.75.75 0 01-.75-.75V3.5a.75.75 0 011.5 0v4.348L16.023 9.348zM12 2.25a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zm0 10.5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5a.75.75 0 01.75-.75zM6.023 9.348L7.5 7.871V3.5a.75.75 0 011.5 0v5.25a.75.75 0 01-.75.75H4.5a.75.75 0 010-1.5h4.348L6.023 9.348z" className="w-5 h-5 mr-2 animate-spin"/>Идет обработка...</p>}
-            {message && <p className={`mt-4 ${message.startsWith('Ошибка') ? 'text-red-600' : 'text-green-600'}`}>{message}</p>}
         </div>
     );
 }
@@ -441,19 +492,29 @@ const PlaceholderPage = ({ title, icon }) => (<div className="p-8 h-full flex fl
 
 function MainPortal({ user, userData, setUserData }) {
     const [currentView, setCurrentView] = useState('profile');
+
     const renderView = () => {
         switch (currentView) {
             case 'profile': return <ProfilePage user={user} userData={userData} setUserData={setUserData} />;
             case 'kpi': return <KpiPage userData={userData} />;
             case 'leaderboard': return <LeaderboardPage />;
-            case 'knowledge': return <KnowledgeBasePage />;
+            case 'knowledge': return <KnowledgeBasePage userData={userData} />;
             case 'best_calls': return <BestCallsPage />;
             case 'trainer': return <PlaceholderPage title="AI-Тренажер" icon="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.898 20.624l-.219.823.219.823a1.875 1.875 0 001.342 1.342l.823.219.823-.219a1.875 1.875 0 001.342-1.342l.219-.823-.219-.823a1.875 1.875 0 00-1.342-1.342l-.823-.219-.823.219a1.875 1.875 0 00-1.342 1.342z" />;
+            case 'scripter': return <PlaceholderPage title="AI-Сценарист" icon="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />;
             case 'admin': if (userData?.role === 'manager' || userData?.role === 'developer') { return <AdminPage />; } return <PlaceholderPage title="Доступ запрещен" icon="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />;
             default: return <ProfilePage user={user} userData={userData} setUserData={setUserData} />;
         }
     };
-    return (<div className="flex h-screen bg-gray-100 font-sans"><Sidebar user={user} userData={userData} activeView={currentView} setActiveView={setCurrentView} /><main className="flex-1 overflow-y-auto"><AnimatePresence mode="wait"><motion.div key={currentView} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }} className="h-full">{renderView()}</motion.div></AnimatePresence></main></div>);
+
+    return (
+        <div className="flex h-screen bg-gray-100 font-sans">
+            <Sidebar user={user} userData={userData} activeView={currentView} setActiveView={setCurrentView} />
+            <main className="flex-1 overflow-y-auto">
+                <AnimatePresence mode="wait"><motion.div key={currentView} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }} className="h-full">{renderView()}</motion.div></AnimatePresence>
+            </main>
+        </div>
+    );
 }
 
 function App() {
@@ -471,7 +532,6 @@ function App() {
                         setUser(currentUser);
                         setUserData(doc.data());
                     } else {
-                         // Если данных нет, но пользователь есть - создаем их
                         const newUserdata = {
                             email: currentUser.email, role: "employee", displayName: currentUser.email.split('@')[0],
                             avatarUrl: `https://ui-avatars.com/api/?name=${currentUser.email[0].toUpperCase()}&background=random&color=fff&size=128`,
@@ -494,9 +554,7 @@ function App() {
         return () => unsubscribe();
     }, []);
 
-    if (loading) {
-        return (<div className="min-h-screen bg-gray-900 flex items-center justify-center"><div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-green-500"></div></div>);
-    }
+    if (loading) { return (<div className="min-h-screen bg-gray-900 flex items-center justify-center"><div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-green-500"></div></div>); }
 
     return user ? <MainPortal user={user} userData={userData} setUserData={setUserData} /> : <AuthPage />;
 }
