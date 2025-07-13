@@ -95,7 +95,10 @@ function AuthPage() {
             if (isLogin) {
                 await signInWithEmailAndPassword(auth, email, password);
             } else {
-                const role = secretCode === 'FINMAN2025' ? 'manager' : 'employee';
+                let role = 'employee';
+                if (secretCode === 'FINMAN2025') role = 'manager';
+                if (secretCode === 'DEVMODE777') role = 'developer';
+                
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 const user = userCredential.user;
                 await setDoc(doc(db, "users", user.uid), {
@@ -137,7 +140,7 @@ function AuthPage() {
                     <form onSubmit={handleAuthAction} className="space-y-4">
                         <div className="relative"><Icon path="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-gray-700 bg-opacity-50 text-white placeholder-gray-400 pl-10 pr-4 py-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-300" required /></div>
                         <div className="relative"><Icon path="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input type="password" placeholder="Пароль" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-gray-700 bg-opacity-50 text-white placeholder-gray-400 pl-10 pr-4 py-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-300" required /></div>
-                        {!isLogin && (<div className="relative"><Icon path="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563.097-1.159.097-1.74 0M3 8.25a3 3 0 013-3m0 0a6 6 0 017.029 5.912c.563.097 1.159.097 1.74 0m-8.769 5.912a3 3 0 01-3-3" className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input type="text" placeholder="Секретный код (для руководителей)" value={secretCode} onChange={(e) => setSecretCode(e.target.value)} className="w-full bg-gray-700 bg-opacity-50 text-white placeholder-gray-400 pl-10 pr-4 py-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-yellow-500 transition-all duration-300" /></div>)}
+                        {!isLogin && (<div className="relative"><Icon path="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563.097-1.159.097-1.74 0M3 8.25a3 3 0 013-3m0 0a6 6 0 017.029 5.912c.563.097 1.159.097 1.74 0m-8.769 5.912a3 3 0 01-3-3" className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input type="text" placeholder="Секретный код (для ролей)" value={secretCode} onChange={(e) => setSecretCode(e.target.value)} className="w-full bg-gray-700 bg-opacity-50 text-white placeholder-gray-400 pl-10 pr-4 py-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-yellow-500 transition-all duration-300" /></div>)}
                         {error && <p className="text-red-400 text-sm mt-4 text-center">{error}</p>}
                         <button type="submit" disabled={loading} className="w-full mt-4 bg-gradient-to-r from-green-500 to-blue-600 hover:from-green-600 hover:to-blue-700 text-white font-bold py-3 rounded-lg shadow-lg transform hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed">{loading ? 'Загрузка...' : (isLogin ? 'Войти' : 'Создать аккаунт')}</button>
                     </form>
@@ -148,6 +151,7 @@ function AuthPage() {
     );
 }
 
+// --- Main Application Components ---
 function Sidebar({ user, userData, activeView, setActiveView }) {
     const handleLogout = async () => { await signOut(auth); };
     const xpToNextLevel = (userData?.level || 1) * 100;
@@ -184,7 +188,6 @@ function Sidebar({ user, userData, activeView, setActiveView }) {
     );
 }
 
-// --- Main Components ---
 function ProfilePage({ user, userData, setUserData }) {
     const [isEditMode, setIsEditMode] = useState(false);
     const [displayName, setDisplayName] = useState(userData?.displayName || '');
@@ -356,11 +359,10 @@ function BestCallsPage() {
     );
 }
 
-function AdminPage() {
+function AdminPage({ currentUserData }) {
     const [message, setMessage] = useState('');
     const [loading, setLoading] = useState({kpi: false, call: false, article: false, user: false});
     const kpiFileInputRef = useRef(null);
-    const callFileInputRef = useRef(null);
     
     const [callTitle, setCallTitle] = useState('');
     const [callDescription, setCallDescription] = useState('');
@@ -377,13 +379,24 @@ function AdminPage() {
         const unsubArticles = onSnapshot(query(collection(db, "knowledge_base"), orderBy("order")), (snapshot) => {
             setArticles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
-        const unsubUsers = onSnapshot(query(collection(db, "users")), (snapshot) => {
+        
+        let usersQuery;
+        if (currentUserData.role === 'developer') {
+            usersQuery = query(collection(db, "users"));
+        } else if (currentUserData.role === 'manager') {
+            usersQuery = query(collection(db, "users"), where("department", "==", currentUserData.department));
+        } else {
+            usersQuery = query(collection(db, "users"), where("email", "==", "")); // Empty query for employees
+        }
+
+        const unsubUsers = onSnapshot(usersQuery, (snapshot) => {
             setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
-        return () => { unsubArticles(); unsubUsers(); };
-    }, []);
 
-    const handleKpiUpload = (event) => {
+        return () => { unsubArticles(); unsubUsers(); };
+    }, [currentUserData]);
+
+    const handleKpiUpload = async (event) => {
         const file = event.target.files[0]; if (!file) return;
         setLoading(prev => ({...prev, kpi: true})); setMessage(''); playSound('click');
         const reader = new FileReader();
@@ -392,6 +405,7 @@ function AdminPage() {
                 const data = new Uint8Array(e.target.result); const workbook = XLSX.read(data, { type: 'array' });
                 const sheetName = workbook.SheetNames.find(name => name.toLowerCase().includes('отчет') || name.toLowerCase().includes('сводная')) || workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
+                if(!worksheet) throw new Error('Не найден лист с названием "Отчет" или "Сводная".');
                 const json = XLSX.utils.sheet_to_json(worksheet);
                 if (json.length === 0) throw new Error('Excel-файл пуст или не найден подходящий лист.');
                 
@@ -411,14 +425,9 @@ function AdminPage() {
                     const querySnapshot = await getDocs(q);
 
                     if (!querySnapshot.empty) {
-                        const userDoc = querySnapshot.docs[0];
-                        const userData = userDoc.data();
+                        const userDoc = querySnapshot.docs[0]; const userData = userDoc.data();
                         const parseValue = (value) => parseFloat(String(value).replace('%', '').replace(',', '.')) || 0;
-                        const newKpi = { 
-                            sales: salesKey ? parseValue(row[salesKey]) : userData.kpi.sales, 
-                            quality: qualityKey ? parseValue(row[qualityKey]) : userData.kpi.quality, 
-                            proactivity: proactivityKey ? parseValue(row[proactivityKey]) : userData.kpi.proactivity 
-                        };
+                        const newKpi = { sales: salesKey ? parseValue(row[salesKey]) : userData.kpi.sales, quality: qualityKey ? parseValue(row[qualityKey]) : userData.kpi.quality, proactivity: proactivityKey ? parseValue(row[proactivityKey]) : userData.kpi.proactivity };
                         const newXp = (userData.xp || 0) + (xpKey ? parseInt(row[xpKey]) : 0);
                         const newLevel = Math.floor(newXp / 100) + 1;
                         let newAchievements = userData.achievements || [];
@@ -473,7 +482,22 @@ function AdminPage() {
     return (
         <div className="p-8 space-y-8">
             <h1 className="text-3xl font-bold text-gray-800">Админ-панель</h1>
-            {/* ... (KPI and Call Upload sections) ... */}
+            <div className="grid md:grid-cols-2 gap-8">
+                <div className="bg-white p-6 rounded-2xl shadow-lg space-y-4">
+                    <h2 className="text-xl font-bold text-gray-700">Загрузка отчета KPI</h2>
+                    <p className="text-gray-600 text-sm">Выберите Excel-файл. Система автоматически найдет лист "Отчет" или "Сводная" и распознает колонки.</p>
+                    <input type="file" ref={kpiFileInputRef} accept=".xlsx, .xls" onChange={handleKpiUpload} disabled={loading.kpi} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50" />
+                </div>
+                <div className="bg-white p-6 rounded-2xl shadow-lg space-y-4">
+                    <h2 className="text-xl font-bold text-gray-700">Загрузить лучший звонок</h2>
+                    <form onSubmit={handleCallUpload} className="space-y-4">
+                        <input type="text" placeholder="Заголовок звонка" value={callTitle} onChange={(e) => setCallTitle(e.target.value)} className="w-full p-2 border-2 border-gray-200 rounded-lg" required />
+                        <textarea placeholder="Краткое описание" value={callDescription} onChange={(e) => setCallDescription(e.target.value)} className="w-full p-2 border-2 border-gray-200 rounded-lg" rows="2"></textarea>
+                        <input type="file" ref={callFileInputRef} accept="audio/*" onChange={(e) => setCallFile(e.target.files[0])} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100" required />
+                        <button type="submit" disabled={loading.call} className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50">Загрузить звонок</button>
+                    </form>
+                </div>
+            </div>
             <div className="bg-white p-6 rounded-2xl shadow-lg"><h2 className="text-xl font-bold text-gray-700 mb-4">Управление сотрудниками</h2>
                 {!editingUser ? (<ul className="space-y-2 max-h-96 overflow-y-auto">{users.map(user => (<li key={user.id} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg"><p>{user.displayName} ({user.email})</p><button onClick={() => { playSound('click'); setEditingUser(user); setManualKpi({...user.kpi, xp: 0}); }} className="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded-full hover:bg-blue-200">Изменить</button></li>))}</ul>) : (
                     <div><h3 className="text-lg font-semibold mb-2">Редактирование: {editingUser.displayName}</h3><div className="grid grid-cols-2 gap-4">
@@ -484,6 +508,7 @@ function AdminPage() {
                     </div><div className="flex space-x-2 mt-4"><button onClick={() => { playSound('click'); setEditingUser(null); }} className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Отмена</button><button onClick={handleManualKpiSave} disabled={loading.user} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50">Сохранить</button></div></div>
                 )}
             </div>
+            {/* ... (Knowledge Base Editor will go here) ... */}
         </div>
     );
 }
@@ -502,7 +527,7 @@ function MainPortal({ user, userData, setUserData }) {
             case 'best_calls': return <BestCallsPage />;
             case 'trainer': return <PlaceholderPage title="AI-Тренажер" icon="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.898 20.624l-.219.823.219.823a1.875 1.875 0 001.342 1.342l.823.219.823-.219a1.875 1.875 0 001.342-1.342l.219-.823-.219-.823a1.875 1.875 0 00-1.342-1.342l-.823-.219-.823.219a1.875 1.875 0 00-1.342 1.342z" />;
             case 'scripter': return <PlaceholderPage title="AI-Сценарист" icon="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />;
-            case 'admin': if (userData?.role === 'manager' || userData?.role === 'developer') { return <AdminPage />; } return <PlaceholderPage title="Доступ запрещен" icon="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />;
+            case 'admin': if (userData?.role === 'manager' || userData?.role === 'developer') { return <AdminPage currentUserData={userData} />; } return <PlaceholderPage title="Доступ запрещен" icon="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />;
             default: return <ProfilePage user={user} userData={userData} setUserData={setUserData} />;
         }
     };
