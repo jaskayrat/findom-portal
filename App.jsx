@@ -255,9 +255,5 @@ function App() {
     return user ? <MainPortal user={user} userData={userData} setUserData={handleSetUserData} /> : <AuthPage />;
 }
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(React.createElement(App));
-    }
-    </script>
-</body>
-</html>
+// Добавляем экспорт по умолчанию для компонента App
+export default App;
