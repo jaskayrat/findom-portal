@@ -7,8 +7,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
 
 // --- Конфигурация Firebase ---
+// Убедитесь, что здесь ваши РЕАЛЬНЫЕ ключи
 const firebaseConfig = {
-  // ВСТАВЬТЕ ВАШИ РЕАЛЬНЫЕ КЛЮЧИ СЮДА
   apiKey: "AIzaSyB5xLruqvWe5_Q9np5WMXNUdtdptKIU_Fs",
   authDomain: "findom-portal.firebaseapp.com",
   projectId: "findom-portal",
@@ -23,6 +23,12 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
+// --- ДАННЫЕ ИЗ СТАРОГО САЙТА ---
+const knowledgeBaseData = {
+    intro: { title: "Введение", icon: "M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z", content: `<h2>Добро пожаловать в FinDom Helper!</h2><p>Этот портал — наша единая база знаний. Здесь собрана вся необходимая информация для успешной работы: от сведений о компании и продуктах до рабочих скриптов, инструкций и тестов. Наша цель — помочь вам быстро освоиться, чувствовать себя уверенно и эффективно выполнять свои задачи.</p><h3>О нас и Aventus Group</h3><p><strong>Findom.kz</strong> — это современный онлайн-сервис микрокредитования, который является частью крупной международной финансовой группы <strong>Aventus Group</strong>. Мы работаем на всей территории Республики Казахстан.</p><p>Наша миссия — предоставить клиентам быстрый, удобный и прозрачный доступ к финансовым средствам. Мы помогаем решать финансовые вопросы за несколько минут, без лишних документов, залогов, поручителей и необходимости посещать офис.</p>` },
+    privacy: { title: "Политика ПДн", icon: "M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z", content: `<h2>Политика обработки персональных данных (ПДн)</h2><p>Защита персональных данных клиентов — наш главный приоритет и юридическая обязанность. Несоблюдение правил работы с конфиденциальной информацией может нанести ущерб как клиенту, так и репутации компании, и влечет за собой строгую ответственность.</p><h3>Что категорически ЗАПРЕЩЕНО</h3><ol><li><strong>Делать фото, видео или скриншоты экрана</strong>, содержащие любые личные данные клиента.</li><li><strong>Записывать персональные данные</strong> клиентов на бумажные носители, в личные телефоны или текстовые файлы.</li><li><strong>Передавать любую информацию о клиентах</strong> через неофициальные каналы: личные мессенджеры, личную электронную почту, SMS.</li><li><strong>Оставлять на экране компьютера открытую информацию</strong> о клиенте, уходя с рабочего места (всегда блокируйте ПК: Win+L).</li></ol>` },
+    telemarketing: { title: "Телемаркетинг", icon: "M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z", content: `<h2>Телемаркетинг (ТМ)</h2><p>Отдел телемаркетинга (ТМ) — это проактивное подразделение, которое работает с исходящими звонками. Его главная цель — увеличение конверсии и привлечение клиентов путем активного взаимодействия с теми, кто начал, но не завершил регистрацию на сайте, а также с повторными клиентами.</p><h3>Этапы звонка (Скрипт)</h3><ol><li><strong>Приветствие и представление:</strong> "Добрый день, [Имя клиента]! Меня зовут [Ваше имя], компания FinDom. Звоню по поводу вашей заявки на сайте, удобно говорить?"</li><li><strong>Выявление причины остановки:</strong> "Вижу, вы начали оформление у нас на сайте. Подскажите, на каком этапе возникли трудности?"</li><li><strong>Работа с возражениями ("Я подумаю"):</strong> "Конечно, решение за вами. Могу я уточнить, какая информация вам нужна для принятия решения? Возможно, я смогу ответить на ваши вопросы прямо сейчас, чтобы сэкономить ваше время."</li></ol>` }
+};
 
 // --- Компоненты ---
 const Icon = ({ path, className = "w-6 h-6" }) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d={path} /></svg>);
@@ -33,15 +39,6 @@ function CircularProgressBar({ value, text, pathColor, textColor, trailColor, te
     const offset = circumference - (value / 100) * circumference;
     return (<div style={{ width: 150, height: 150, position: 'relative' }}><svg width="150" height="150" viewBox="0 0 100 100"><circle cx="50" cy="50" r={radius} stroke={trailColor || "#d6d6d6"} strokeWidth="10" fill="transparent" /><motion.circle cx="50" cy="50" r={radius} stroke={pathColor || "#4a90e2"} strokeWidth="10" fill="transparent" strokeDasharray={circumference} strokeLinecap="round" transform="rotate(-90 50 50)" initial={{ strokeDashoffset: circumference }} animate={{ strokeDashoffset: offset }} transition={{ duration: 1, ease: "easeInOut" }} /></svg><div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: textSize || '24px', color: textColor || '#333', fontWeight: 'bold' }}>{text}</div></div>);
 }
-
-// ... (Остальные компоненты: AuthPage, Sidebar, ProfilePage, и т.д. - вставляются сюда)
-// Я вставлю их ниже в этом же файле
-
-const knowledgeBaseData = {
-    intro: { title: "Введение", icon: "M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z", content: `<h2>Добро пожаловать в FinDom Helper!</h2><p>Этот портал — наша единая база знаний...</p>` },
-    privacy: { title: "Политика ПДн", icon: "M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z", content: `<h2>Политика обработки персональных данных (ПДн)</h2><p>Защита персональных данных клиентов — наш главный приоритет...</p>` },
-    telemarketing: { title: "Телемаркетинг", icon: "M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z", content: `<h2>Телемаркетинг (ТМ)</h2><p>Отдел телемаркетинга (ТМ) — это проактивное подразделение...</p>` }
-};
 
 function AuthPage() {
     const [isLogin, setIsLogin] = useState(true);
@@ -57,7 +54,7 @@ function AuthPage() {
             } else {
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 const user = userCredential.user;
-                await setDoc(doc(db, "users", user.uid), {
+                await setDoc(doc(db, "users", user.uid),{
                     email: user.email, role: "employee", displayName: user.email.split('@')[0],
                     avatarUrl: `https://ui-avatars.com/api/?name=${user.email[0]}&background=random&color=fff&size=128`,
                     assistantName: "Помощник", level: 1, xp: 0,
@@ -261,7 +258,7 @@ function App() {
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(App));
-    }
+    };
     </script>
 </body>
 </html>
