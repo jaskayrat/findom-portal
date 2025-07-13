@@ -7,7 +7,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
 
 // --- Конфигурация Firebase ---
-// Убедитесь, что здесь ваши РЕАЛЬНЫЕ ключи
 const firebaseConfig = {
   apiKey: "AIzaSyB5xLruqvWe5_Q9np5WMXNUdtdptKIU_Fs",
   authDomain: "findom-portal.firebaseapp.com",
@@ -255,5 +254,4 @@ function App() {
     return user ? <MainPortal user={user} userData={userData} setUserData={handleSetUserData} /> : <AuthPage />;
 }
 
-// Добавляем экспорт по умолчанию для компонента App
 export default App;
